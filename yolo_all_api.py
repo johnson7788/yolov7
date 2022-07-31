@@ -65,7 +65,7 @@ class YOLOModel(object):
         self.weights = 'runs/train/all/weights/best.pt'      # 'yolov5s.pt'
         # self.weights = 'runs/train/exp2/weights/last.pt'      # 'yolov5s.pt'
         self.source = 'images_dir'  #图片目录
-        self.img_size = 1024   #像素864
+        self.img_size = 640   #像素864, 1024
         self.conf_thres = 0.5  #置信度, 大于这个置信度的才类别才取出来
         self.iou_thres = 0.5  #IOU的NMS阈值
         self.view_img = False   #是否显示图片的结果
