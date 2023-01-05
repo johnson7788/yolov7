@@ -1,0 +1,20 @@
+# pdf 段落检测
+# 训练命令: python train.py --data pdfmini.yaml
+# Default dataset location is next to /yolov5:
+#   /parent_folder
+#     /pdfmini
+#     /yolov5
+
+
+# download command/URL (optional)
+download: http://127.0.0.1/pdfmini.zip
+
+# train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
+train: ../labeled_product_detection/images  # 128 images
+val: ../labeled_product_detection/images  # 128 images
+
+# number of classes
+nc: 1
+
+#
+names: [ 'product' ]
