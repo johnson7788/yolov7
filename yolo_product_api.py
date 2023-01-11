@@ -84,7 +84,6 @@ class YOLOModel(object):
         if not os.path.exists(self.predict_dir):
             os.makedirs(self.predict_dir)
         self.load_predict_model()
-        self.access_token =self.baidu_token()
 
     def load_train_model(self):
         """
@@ -216,113 +215,6 @@ class YOLOModel(object):
         print(f'Done. ({time.time() - t0:.3f}s)')
         return results
 
-    def baidu_token(self):
-        sys.path.append('/opt/salt-daily-check/bin')
-        from baidutoken import gettoken
-        access_token = gettoken()
-        return access_token
-    def baidu_ocr(self, image_byte):
-        """
-        返回json格式的预测结果
-        :param image_byte, 图片的bytes格式
-        :return: string 格式的识别结果
-        """
-        import base64
-        request_url = "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"
-        # 二进制方式打开图片文件
-        # 图片识别成文字
-        results = ''
-        img = base64.b64encode(image_byte)
-        params = {"image": img}
-        request_url = request_url + "?access_token=" + self.access_token
-        headers = {'content-type': 'application/x-www-form-urlencoded'}
-        response = requests.post(request_url, data=params, headers=headers)
-        if response.status_code == 200:
-            res = response.json()
-            if res.get("words_result") is None:
-                print(f"错误: 百度OCR返回的消息是: {res}")
-                sys.exit(0)
-            for w in res['words_result']:
-                results = results + w['words'] + '\n'
-        return results
-
-    def paddle_ocr(self, image_path):
-        """
-        使用paddle的程序ocr，首先启动paddle 的api，监听的端口6688
-        :param image_path:
-        :type image_path:
-        :return:
-        :rtype:
-        """
-        request_url = 'http://127.0.0.1:6688/api/path'
-        image = os.path.abspath(image_path)
-        headers = {'content-type': 'application/json'}
-        data = {"images": image}
-        r = requests.post(request_url, data=json.dumps(data), headers=headers)
-        jsonres = r.json()
-        results = ''
-        image_res = jsonres[0]['ocr_result']
-        for every in image_res:
-            words = every['words']
-            results = results + words + '\n'
-        return results
-
-    def extract(self, detect_data, extract_dir, ocr='baidu'):
-        """
-        对detect得到的结果，截取其中目标检测的内容，保存到extract_dir
-        对于截取的图片的命名，需要通过OCR识别,需要调用baidu OCR的api
-        :param detect_data: 是dectect函数的结果
-        :param extract_dir: 提取图片中的表格，公式，图片，裁剪出来，保存到这个目录中
-        :param ocr: 使用baidu的ocr，还是paddle的ocr
-        :return:
-        """
-        for img_idx, data in enumerate(detect_data):
-            images, bboxes, confidences, labels, image_size= data
-            img = cv2.imread(images)
-            print(f"开始对图片：{images} 进行OCR的识别和整理")
-            for box_idx, (bbox, label) in enumerate(zip(bboxes, labels)):
-                #每个候选框识别图片的结果
-                x1, y1, x2, y2 = list(map(int, bbox))
-                #截取图片
-                crop_img = img[y1:y2, x1:x2]
-                #图片名字
-                en_label = self.label_list[self.label_list_cn.index(label)]
-                # 识别公式图片时要识别公式图片的后半部分，截取约1/10处
-                if en_label == 'equation':
-                    height, width, channel = crop_img.shape
-                    recog_img = crop_img[:, int(width*0.9):width, :]
-                else:
-                    recog_img = crop_img
-                if ocr == 'baidu':
-                    retval, buffer = cv2.imencode('.jpg', recog_img)
-                    img_bytes = buffer.tostring()
-                    ocr_res = self.baidu_ocr(image_byte=img_bytes)
-                else:
-                    tmp_img = '/tmp/will_recog.jpg'
-                    cv2.imwrite(tmp_img, recog_img)
-                    ocr_res = self.paddle_ocr(image_path=tmp_img)
-                #OCR识别结果
-                ocr_res = ocr_res.lower()
-                p = re.compile(r'(?<=\b%s )\d+\b' % en_label)
-                # 保存图片
-                if en_label in ['table', 'figure']:
-                    res = re.findall(p, ocr_res)
-                    if res:
-                        name = f"image{img_idx}_{box_idx}_{en_label}_{res[0]}.jpg"
-                    else:
-                        name = f"image{img_idx}_{box_idx}_{en_label}_x1.jpg"
-                else:
-                    #是公式，那么命名的顺序是有区别的，例如识别的是 了≡Wqj-0+1:    (1)
-                    num_res = re.findall('(?<=\()\d+(?=\))', ocr_res)
-                    if num_res:
-                        equation_num = num_res[-1]
-                        name = f"image{img_idx}_{box_idx}_equation_{equation_num}.jpg"
-                    else:
-                        name = f"image{img_idx}_{box_idx}_equation_x2.jpg"
-                #保存图片
-                name_path = os.path.join(extract_dir,name)
-                cv2.imwrite(name_path, crop_img)
-
     def do_train(self, data):
         """
         训练模型, 数据集分成2部分，训练集和验证集, 默认比例9:1
@@ -370,9 +262,7 @@ def extract():
     """
     jsonres = request.get_json()
     test_data = jsonres.get('data', None)
-    extract_dir = jsonres.get('extract_dir', None)
     detect_data = model.detect(test_data)
-    results = model.extract(detect_data=detect_data, extract_dir=extract_dir)
     logger.info(f"收到的数据是:{test_data}")
     logger.info(f"预测的结果是:{detect_data}")
     return jsonify(detect_data)
@@ -393,4 +283,4 @@ def train():
 
 if __name__ == "__main__":
     model = YOLOModel()
-    app.run(host='0.0.0.0', port=5008, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=5009, debug=False, threaded=True)
