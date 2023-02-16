@@ -31,6 +31,7 @@ import cv2
 import torch
 import torch.backends.cudnn as cudnn
 from numpy import random
+import argparse
 
 from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
@@ -47,7 +48,7 @@ app = Flask(__name__)
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 class YOLOModel(object):
-    def __init__(self, verbose=0):
+    def __init__(self, verbose=0, cpu=False):
         self.verbose = verbose
         self.label_list = ['table','figure','equation','algorithm','title','paragraph','other','pgequation']
         self.label_list_cn = ['表格','图像','公式','算法','标题','段落','其他','段落公式']
@@ -55,8 +56,12 @@ class YOLOModel(object):
         self.colors = [[random.randint(0, 255) for _ in range(3)] for _ in self.label_list]
         self.num_labels = len(self.label_list)
         # 判断使用的设备
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.n_gpu = torch.cuda.device_count() if torch.cuda.is_available() else 0
+        if cpu:
+            self.device = torch.device("cpu")
+            self.n_gpu = 0
+        else:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.n_gpu = torch.cuda.device_count() if torch.cuda.is_available() else 0
         # 预测的batch_size大小
         self.train_batch_size = 8
         # 预测的batch_size大小
@@ -388,6 +393,17 @@ def train():
     results = model.do_train(data)
     return jsonify(results)
 
+def parse_args():
+    """
+    返回arg变量和help
+    :return:
+    """
+    parser = argparse.ArgumentParser(description="YOLO 推理",formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('-cpu', "--cpu", action='store_true', help="是否只使用cpu推理")
+    return parser.parse_args(), parser.print_help
+
+
 if __name__ == "__main__":
-    model = YOLOModel()
+    arg, helpmsg = parse_args()
+    model = YOLOModel(cpu=arg.cpu)
     app.run(host='0.0.0.0', port=5008, debug=False, threaded=True)
